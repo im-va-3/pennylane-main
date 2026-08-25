@@ -1,0 +1,484 @@
+# Copyright 2018-2021 Xanadu Quantum Technologies Inc.
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""
+This module contains the Identity operation that is common to qubit computing paradigms in PennyLane.
+"""
+
+from functools import lru_cache
+
+from scipy import sparse
+
+import pennylane as qp
+from pennylane.core.operator import Operation, Operator2, abstractify
+from pennylane.decomposition import add_decomps, register_resources
+from pennylane.decomposition.decomposition_rule import null_decomp
+from pennylane.exceptions import SparseMatrixUndefinedError
+from pennylane.ops.op_math.adjoint2 import adjoint_rotation as adjoint_rotation2
+from pennylane.ops.op_math.pow2 import pow_rotation as pow_rotation2
+from pennylane.typing import Float, TensorLike, Wire
+from pennylane.wires import WiresLike
+
+
+class Identity(Operation):
+    r"""
+    The Identity operator
+
+    The expectation of this observable
+
+    .. math::
+        E[I] = \text{Tr}(I \rho)
+
+    .. seealso:: The equivalent short-form alias :class:`~I`
+
+    Args:
+        wires (Iterable[Any] or Any): Wire label(s) that the identity acts on.
+
+    Corresponds to the trace of the quantum state, which in exact
+    simulators should always be equal to 1.
+    """
+
+    num_params = 0
+
+    grad_method = None
+    """Gradient computation method."""
+
+    is_verified_hermitian = True
+
+    resource_keys = set()
+
+    @property
+    def resource_params(self) -> dict:
+        return {}
+
+    @classmethod
+    def _primitive_bind_call(
+        cls, wires: WiresLike = (), **kwargs
+    ):  # pylint: disable=arguments-differ
+        return super()._primitive_bind_call(wires=wires, **kwargs)
+
+    def _flatten(self):
+        return tuple(), (self.wires, tuple())
+
+    def __init__(self, wires: WiresLike = ()):
+        super().__init__(wires=wires)
+        self._hyperparameters = {"n_wires": len(self.wires)}
+        self._pauli_rep = qp.pauli.PauliSentence({qp.pauli.PauliWord({}): 1.0})
+
+    def label(self, decimals=None, base_label=None, cache=None):
+        return base_label or "I"
+
+    def __repr__(self):
+        """String representation."""
+        if len(self.wires) == 0:
+            return "I()"
+        if len(self.wires) == 1:
+            wire = self.wires[0]
+            if isinstance(wire, str):
+                return f"I('{wire}')"
+            return f"I({wire})"
+        return f"I({self.wires})"
+
+    @property
+    def name(self):
+        return "Identity"
+
+    @staticmethod
+    def compute_eigvals(n_wires=1):  # pylint: disable=arguments-differ
+        r"""Eigenvalues of the operator in the computational basis (static method).
+
+        If :attr:`diagonalizing_gates` are specified and implement a unitary :math:`U^{\dagger}`,
+        the operator can be reconstructed as
+
+        .. math:: O = U \Sigma U^{\dagger},
+
+        where :math:`\Sigma` is the diagonal matrix containing the eigenvalues.
+
+        Otherwise, no particular order for the eigenvalues is guaranteed.
+
+        .. seealso:: :meth:`~.I.eigvals`
+
+        Returns:
+            array: eigenvalues
+
+        **Example**
+
+        >>> print(qp.I.compute_eigvals())
+        [1. 1.]
+        """
+        return qp.math.ones(2**n_wires)
+
+    @staticmethod
+    @lru_cache
+    def compute_matrix(n_wires=1):  # pylint: disable=arguments-differ
+        r"""Representation of the operator as a canonical matrix in the computational basis (static method).
+
+        The canonical matrix is the textbook matrix representation that does not consider wires.
+        Implicitly, this assumes that the wires of the operator correspond to the global wire order.
+
+        .. seealso:: :meth:`~.Identity.matrix`
+
+        Returns:
+            ndarray: matrix
+
+        **Example**
+
+        >>> print(qp.Identity.compute_matrix())
+        [[1. 0.]
+         [0. 1.]]
+        """
+        return qp.math.eye(int(2**n_wires))
+
+    @staticmethod
+    @lru_cache
+    def compute_sparse_matrix(n_wires=1, format="csr"):  # pylint: disable=arguments-differ
+        return sparse.eye(int(2**n_wires), format=format)
+
+    def matrix(self, wire_order=None):
+        n_wires = len(wire_order) if wire_order else len(self.wires)
+        return self.compute_matrix(n_wires=n_wires)
+
+    @staticmethod
+    def compute_diagonalizing_gates(
+        wires, n_wires=1
+    ):  # pylint: disable=arguments-differ,unused-argument
+        r"""Sequence of gates that diagonalize the operator in the computational basis (static method).
+
+        Given the eigendecomposition :math:`O = U \Sigma U^{\dagger}` where
+        :math:`\Sigma` is a diagonal matrix containing the eigenvalues,
+        the sequence of diagonalizing gates implements the unitary :math:`U^{\dagger}`.
+
+        The diagonalizing gates rotate the state into the eigenbasis
+        of the operator.
+
+        .. seealso:: :meth:`~.Identity.diagonalizing_gates`.
+
+        Args:
+            wires (Iterable[Any], Wires): wires that the operator acts on
+
+        Returns:
+            list[.Operator]: list of diagonalizing gates
+
+        **Example**
+
+        >>> qp.Identity.compute_diagonalizing_gates(wires=[0])
+        []
+        """
+        return []
+
+    @staticmethod
+    def compute_decomposition(wires, n_wires=1):  # pylint:disable=arguments-differ,unused-argument
+        r"""Representation of the operator as a product of other operators (static method).
+
+        .. math:: O = O_1 O_2 \dots O_n.
+
+        .. seealso:: :meth:`~.Identity.decomposition`.
+
+        Args:
+            wires (Any, Wires): A single wire that the operator acts on.
+
+        Returns:
+            list[Operator]: decomposition into lower level operations
+
+        **Example:**
+
+        >>> qp.Identity.compute_decomposition(wires=0)
+        []
+
+        """
+        return []
+
+    def adjoint(self):
+        return I(wires=self.wires)
+
+    def pow(self, z):
+        return [I(wires=self.wires)]
+
+    def queue(self, context=qp.QueuingManager):
+        context.append(self)
+        return self
+
+
+I = Identity
+r"""The Identity operator
+
+The expectation of this observable
+
+.. math::
+    E[I] = \text{Tr}(I \rho)
+
+.. seealso:: The equivalent long-form alias :class:`~Identity`
+
+Args:
+    wires (Iterable[Any] or Any): Wire label(s) that the identity acts on.
+
+Corresponds to the trace of the quantum state, which in exact
+simulators should always be equal to 1.
+"""
+
+add_decomps(Identity, null_decomp)
+add_decomps("Adjoint(Identity)", null_decomp)
+add_decomps("C(Identity)", null_decomp)
+add_decomps("Pow(Identity)", null_decomp)
+
+
+class GlobalPhase(Operator2):
+    r"""A global phase operation that multiplies all components of the state by :math:`e^{-i \phi}`.
+
+    **Details:**
+
+    * Number of wires: All (the operation acts on all wires)
+    * Number of parameters: 1
+    * Number of dimensions per parameter: (0,)
+    * Gradient recipe: None
+
+    Args:
+        phi (TensorLike): the global phase
+        wires (Iterable[Any] or Any): unused argument - the operator is applied to all wires
+
+    **Example**
+
+    .. code-block:: python
+
+        dev = qp.device("default.qubit", wires=2)
+
+        @qp.qnode(dev)
+        def circuit(phi=None, return_state=False):
+            qp.X(0)
+            if phi:
+                qp.GlobalPhase(phi)
+            if return_state:
+                return qp.state()
+            return qp.expval(qp.Z(0)), qp.expval(qp.Z(1))
+
+    The circuit yields the same expectation values with and without the global phase:
+
+    >>> circuit()
+    (np.float64(-1.0), np.float64(1.0))
+    >>> circuit(phi=0.123)
+    (np.float64(-1.0), np.float64(1.0))
+
+    However, the states of the two systems differ by a global phase factor:
+
+    >>> circuit(return_state=True)
+    array([0.+0.j, 0.+0.j, 1.+0.j, 0.+0.j])
+    >>> circuit(return_state=True, phi=0.123)
+    array([0.        +0.j        , 0.        +0.j        ,
+            0.99244503-0.12269009j, 0.        +0.j        ])
+
+
+    """
+
+    # NOTE: Previous default for legacy operator
+    num_wires = None
+
+    dynamic_argnames = ("phi",)
+    arg_specs = {"phi": Float, "wires": Wire[0]}
+
+    def __init__(self, phi, wires: WiresLike = ()):  # pylint: disable=unused-argument
+        # NOTE: Pass empty wires to mimic MLIR counterpart
+        # TODO: Remove 'wires' argument eventually, only here for backwards compatibility, [sc-127745]
+        super().__init__(phi, ())
+
+    @staticmethod
+    def compute_eigvals(phi, wires=()):  # pylint: disable=arguments-differ
+        r"""Eigenvalues of the operator in the computational basis (static method).
+
+        If :attr:`diagonalizing_gates` are specified and implement a unitary :math:`U^{\dagger}`,
+        the operator can be reconstructed as
+
+        .. math:: O = U \Sigma U^{\dagger},
+
+        where :math:`\Sigma` is the diagonal matrix containing the eigenvalues.
+
+        Otherwise, no particular order for the eigenvalues is guaranteed.
+
+        .. seealso:: :meth:`~.GlobalPhase.eigvals`
+
+        Returns:
+            array: eigenvalues
+
+        **Example**
+
+        >>> qp.GlobalPhase.compute_eigvals(np.pi/2, wires=[0])
+        array([6.123234e-17-1.j, 6.123234e-17-1.j])
+        """
+        n_wires = len(wires)
+        if (
+            qp.math.get_interface(phi) == "tensorflow"
+        ):  # pragma: no cover (TensorFlow tests were disabled during deprecation)
+            phi = qp.math.cast_like(phi, 1j)
+        exp = qp.math.exp(-1j * phi)
+        ones = qp.math.ones(2**n_wires, like=phi)
+
+        if qp.math.ndim(phi) == 0:
+            return exp * ones
+
+        return qp.math.tensordot(exp, ones, axes=0)
+
+    @staticmethod
+    def compute_matrix(phi, wires=()):  # pylint: disable=arguments-differ
+        r"""Representation of the operator as a canonical matrix in the computational basis (static method).
+        The canonical matrix is the textbook matrix representation that does not consider wires.
+        Implicitly, this assumes that the wires of the operator correspond to the global wire order.
+
+        .. seealso:: :meth:`~.GlobalPhase.matrix`
+
+        Returns:
+            ndarray: matrix
+
+        **Example**
+
+        >>> qp.GlobalPhase.compute_matrix(np.pi/4, wires=[0])
+        array([[0.70710678-0.70710678j, 0.        +0.j        ],
+               [0.        +0.j        , 0.70710678-0.70710678j]])
+        """
+        n_wires = len(wires)
+        interface = qp.math.get_interface(phi)
+        eye = qp.math.eye(2**n_wires, like=phi)
+        exp = qp.math.exp(-1j * qp.math.cast(phi, complex))
+        if (
+            interface == "tensorflow"
+        ):  # pragma: no cover (TensorFlow tests were disabled during deprecation)
+            eye = qp.math.cast_like(eye, 1j)
+        elif interface == "torch":
+            eye = eye.to(exp.device)
+
+        if qp.math.ndim(phi) == 0:
+            return exp * eye
+        return qp.math.tensordot(exp, eye, axes=0)
+
+    @staticmethod
+    def compute_sparse_matrix(phi, wires=(), format="csr"):  # pylint: disable=arguments-differ
+        n_wires = len(wires)
+        if qp.math.ndim(phi) > 0:
+            raise SparseMatrixUndefinedError("Sparse matrices do not support broadcasting")
+        return qp.math.exp(-1j * phi) * sparse.eye(2**n_wires, format=format)
+
+    @staticmethod
+    def compute_diagonalizing_gates(
+        phi, wires=()
+    ):  # pylint: disable=arguments-differ,unused-argument
+        r"""Sequence of gates that diagonalize the operator in the computational basis (static method).
+
+        Given the eigendecomposition :math:`O = U \Sigma U^{\dagger}` where
+        :math:`\Sigma` is a diagonal matrix containing the eigenvalues,
+        the sequence of diagonalizing gates implements the unitary :math:`U^{\dagger}`.
+
+        The diagonalizing gates rotate the state into the eigenbasis
+        of the operator.
+
+        .. seealso:: :meth:`~.GlobalPhase.diagonalizing_gates`.
+
+        Args:
+            wires (Iterable[Any], Wires): wires that the operator acts on
+
+        Returns:
+            list[.Operator]: list of diagonalizing gates
+
+        **Example**
+
+        >>> qp.GlobalPhase.compute_diagonalizing_gates(1.2, wires=[0])
+        []
+        """
+        return []
+
+    def matrix(self, wire_order: WiresLike | None = None) -> TensorLike:
+        return self.compute_matrix(self.phi, wires=wire_order or ())
+
+    def sparse_matrix(self, wire_order: WiresLike | None = None, format: str = "csr"):
+        return self.compute_sparse_matrix(self.phi, wires=wire_order or (), format=format)
+
+    def eigvals(self) -> TensorLike:
+        return self.compute_eigvals(self.phi, wires=self.wires)
+
+    def adjoint(self):
+        return GlobalPhase(-1 * self.phi)
+
+    def pow(self, z):
+        return [GlobalPhase(z * self.phi)]
+
+    def generator(self):
+        # needs to return a new_opmath instance regardless of whether new_opmath is enabled, because
+        # it otherwise can't handle Identity with no wires, see PR #5194
+        return qp.s_prod(-1, qp.I())
+
+
+def _controlled_g_phase_resource(
+    base, control_wires, control_values, work_wires, work_wire_type
+):  # pylint: disable=unused-argument
+    num_control_wires = len(control_wires)
+    num_work_wires = len(work_wires)
+
+    resources = {}
+
+    if num_control_wires == 1:  # Worst-case we need a GlobalPhase if control on zero
+        resources[qp.PhaseShift] = 1
+        resources[qp.GlobalPhase] = 1
+        return resources
+
+    # NOTE: Take average case scenario for number of X required for zero control values
+    resources[qp.X] = num_control_wires
+
+    if num_control_wires == 2:
+        resources[qp.ControlledPhaseShift] = 1
+        return resources
+
+    resources[
+        qp.ctrl(
+            abstractify(qp.PhaseShift),
+            control=Wire[num_control_wires - 1],
+            work_wires=Wire[num_work_wires],
+        )
+    ] = 1
+
+    return resources
+
+
+@register_resources(_controlled_g_phase_resource, exact=False)
+def _controlled_g_phase_decomp(
+    base,
+    control_wires,
+    control_values,
+    work_wires,
+    work_wire_type,  # pylint: disable=unused-argument
+):
+    """The decomposition rule for a controlled global phase."""
+    if len(control_wires) == 1:
+
+        def _true():
+            qp.PhaseShift(-base.phi, wires=control_wires[-1])
+
+        def _false():
+            qp.PhaseShift(base.phi, wires=control_wires[-1])
+            qp.GlobalPhase(base.phi)
+
+        qp.cond(control_values[0], _true, _false)()
+        return
+
+    @qp.for_loop(0, len(control_values))
+    def _x_flips(i):
+        qp.cond(qp.math.logical_not(control_values[i]), qp.X)(control_wires[i])
+
+    _x_flips()  # pylint: disable=no-value-for-parameter
+    qp.ctrl(
+        qp.PhaseShift(-base.phi, wires=control_wires[-1]),
+        control=control_wires[:-1],
+        work_wires=work_wires,
+    )
+    _x_flips()  # pylint: disable=no-value-for-parameter
+
+
+add_decomps("Adjoint(GlobalPhase)", adjoint_rotation2)
+add_decomps("Pow(GlobalPhase)", pow_rotation2)
+add_decomps("C(GlobalPhase)", _controlled_g_phase_decomp)
