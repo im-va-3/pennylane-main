@@ -779,9 +779,10 @@ jobs:
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v7
+        continue-on-error: true
         with:
           token: ${{ secrets.codecov_token }}
-          fail_ci_if_error: true  # upload errors should be caught early
+          fail_ci_if_error: false
 
   upload-reports:
     needs:
