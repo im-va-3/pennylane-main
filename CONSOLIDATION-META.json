@@ -21,13 +21,10 @@
   "schema_version": "1.0",
   "snapshot": {
     "category": "05-quantum-computing-and-quantum-physics",
-    "copied_bytes": 83480270,
-    "copied_files": 1915,
+    "copied_bytes": 83873365,
+    "copied_files": 1974,
     "date": "2026-08-25",
-    "excluded_directories": [
-      "pennylane/data",
-      "tests/data"
-    ],
+    "excluded_directories": [],
     "excluded_files": [],
     "folder": "pennylane-main",
     "kind": "independent-code-snapshot",
