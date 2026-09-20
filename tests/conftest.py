@@ -273,6 +273,17 @@ CUSTOM_MARKERS = {
 }
 
 
+def pytest_configure(config):
+    """Register markers assigned dynamically during test collection.
+
+    Some CI jobs select a test directory whose root configuration is not
+    ``tests/pytest.ini``. Registering the markers here keeps warnings-as-errors
+    runs independent of pytest's rootdir selection.
+    """
+    for marker in sorted(CUSTOM_MARKERS | {"core"}):
+        config.addinivalue_line("markers", f"{marker}: PennyLane test-suite marker")
+
+
 def pytest_collection_modifyitems(items, config):
     """Handles markers for tests automatically."""
 
