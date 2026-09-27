@@ -68,9 +68,7 @@ on:
 
 jobs:
   check_in_artifact:
-    runs-on:
-      group: 'PennyLaneAI-Static-IP-Runners'
-      labels: ['pl-2-core-gh-runner']         
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
