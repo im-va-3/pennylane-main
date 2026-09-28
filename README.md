@@ -146,3 +146,37 @@ If you are doing research using PennyLane, please cite [our paper](https://arxiv
 ## License
 
 PennyLane is **free** and **open source**, released under the Apache License, Version 2.0.
+
+
+## Step-by-step user guide
+
+1. **Install PennyLane.** Use Python 3.12 or newer and run <code>python -m pip install pennylane</code>. Install an optional device plugin when you need hardware access or a specialized simulator.
+2. **Run a first differentiable circuit.** Save this as a Python file and run it in the activated environment:
+
+~~~python
+import pennylane as qml
+
+dev = qml.device("default.qubit", wires=2)
+
+@qml.qnode(dev)
+def circuit(theta):
+    qml.RY(theta, wires=0)
+    qml.CNOT(wires=[0, 1])
+    return qml.expval(qml.PauliZ(1))
+
+print(circuit(0.1))
+print(qml.grad(circuit)(0.1))
+~~~
+
+3. **Build the algorithm.** Replace the example gates and measurement with your circuit, observable, and parameters. Keep the QNode interface while changing a simulator for a hardware device.
+4. **Train or optimize.** Use PennyLane's differentiation interfaces and optimizers to update circuit parameters; combine quantum nodes with classical Python/ML code for hybrid workflows.
+5. **Compile and run at scale.** Apply circuit transforms, use a Lightning or hardware plugin, inspect resource requirements, and choose shots/precision appropriate to the device.
+6. **Follow a domain tutorial.** Use the chemistry, quantum information, optimization, and QML demos linked above before designing a larger application.
+
+### Functionality map
+
+- Quantum circuits and differentiable QNodes; state preparation, measurements, observables, templates, and circuit transforms.
+- Analytic/finite-shot gradients and optimizers for quantum machine learning and hybrid quantum-classical models.
+- Device abstraction and plugins for simulators and quantum hardware; Lightning simulators for high-performance execution.
+- Quantum chemistry, datasets, resource estimation, compilation, and visualization tools are covered in the [documentation](https://docs.pennylane.ai/en/stable/) and [demos](https://pennylane.ai/qml/demonstrations/).
+
